@@ -44,6 +44,12 @@ if map_data and map_data["last_clicked"]:
 st.write(f"現在の中心座標: {lat}, {lon}")
 st.info("地図上をクリックすると、その地点に円が移動します。")
 
+with st.sidebar:
+    st.markdown("---")
+    st.caption("### Disclaimer / 免責事項")
+    st.caption("This app is for educational purposes. Use at your own risk.")
+    st.caption("本アプリは学習用です。利用による責任は負いかねます。")
+
 #複数ページ実装
 st.page_link("20260102_App.py", label="Home", icon="🏠")
 st.page_link("pages/page1.py", label="Page1")
