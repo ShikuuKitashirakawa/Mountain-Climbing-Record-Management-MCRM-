@@ -1,125 +1,127 @@
 import streamlit as st
 import folium
+from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
-import requests
-import re
+import pandas as pd
+import os
+from datetime import date
 
-st.set_page_config(layout="wide", page_title="低山・一般山岳探索")
+# --- ページ設定 ---
+st.set_page_config(layout="wide", page_title="四国 登山＆里山ログ（試作版）")
 
-st.title("🌿 全国・一般山岳探索ツール（試作品）")
-st.markdown("百名山・新日本百名山以外の、地域に親しまれている山々を探索できます。")
+CSV_FILE = "shikoku_mountain_full_v5.csv"
 
-# --- 1. 定数・リスト ---
-PREFECTURES = ["指定なし", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"]
+# --- 1. データ初期化（100座全データを復元） ---
+def initialize_csv():
+    if not os.path.exists(CSV_FILE):
+        base_data = [
+            # 香川県(12)
+            {"山名":"星ヶ城山","標高":817,"所在地":"香川県小豆島町","lat":34.51,"lon":134.3211,"分類":"四国百名山"},{"山名":"女体山","標高":790,"所在地":"香川県さぬき市","lat":34.2258,"lon":134.2047,"分類":"四国百名山"},{"山名":"大滝山","標高":946,"所在地":"香川県高松市/徳島県美馬市","lat":34.1367,"lon":134.135,"分類":"四国百名山"},{"山名":"竜王山","標高":1060,"所在地":"香川県高松市/徳島県美馬市","lat":34.1147,"lon":134.0303,"分類":"四国百名山"},{"山名":"大川山","標高":1043,"所在地":"香川県まんのう町/徳島県三好市","lat":34.0867,"lon":133.9161,"分類":"四国百名山"},{"山名":"屋島","標高":292,"所在地":"香川県高松市","lat":34.3608,"lon":134.1011,"分類":"四国百名山"},{"山名":"五色台","標高":445,"所在地":"香川県高松市/坂出市","lat":34.3491,"lon":133.9461,"分類":"四国百名山"},{"山名":"飯野山","標高":422,"所在地":"香川県丸亀市/坂出市","lat":34.2753,"lon":133.8422,"分類":"四国百名山"},{"山名":"我拝師山","標高":481,"所在地":"香川県善通寺市","lat":34.2211,"lon":133.7578,"分類":"四国百名山"},{"山名":"象頭山","標高":521,"所在地":"香川県琴平町","lat":34.1936,"lon":133.8055,"分類":"四国百名山"},{"山名":"雲辺寺山","標高":927,"所在地":"香川県観音寺市/徳島県三好市","lat":34.0353,"lon":133.7236,"分類":"四国百名山"},{"山名":"紫雲出山","標高":352,"所在地":"香川県三豊市","lat":34.2483,"lon":133.595,"分類":"四国百名山"},
+            # 徳島県(28)
+            {"山名":"大麻山","標高":538,"所在地":"徳島県鳴門市","lat":34.1758,"lon":134.5028,"分類":"四国百名山"},{"山名":"眉山","標高":290,"所在地":"徳島県徳島市","lat":34.0686,"lon":134.5347,"分類":"四国百名山"},{"山名":"中津峰山","標高":773,"所在地":"徳島県徳島市/小松島市","lat":33.9822,"lon":134.5453,"分類":"四国百名山"},{"山名":"津峰山","標高":284,"所在地":"徳島県阿南市","lat":33.9011,"lon":134.6644,"分類":"四国百名山"},{"山名":"太竜寺山","標高":618,"所在地":"徳島県阿南市/那賀町","lat":33.8814,"lon":134.5203,"分類":"四国百名山"},{"山名":"千羽ヶ岳","標高":245,"所在地":"徳島県美波町","lat":33.7275,"lon":134.5211,"分類":"四国百名山"},{"山名":"野根山","標高":783,"所在地":"徳島県海陽町/高知県東洋町","lat":33.5358,"lon":134.2153,"分類":"四国百名山"},{"山名":"高越山","標高":1133,"所在地":"徳島県吉野川市","lat":34.015,"lon":134.2386,"分類":"四国百名山"},{"山名":"旭ヶ丸","標高":1020,"所在地":"徳島県上勝町/佐那河内村","lat":33.9536,"lon":134.4286,"分類":"四国百名山"},{"山名":"雲早山","標高":1496,"所在地":"徳島県上勝町/那賀町/神山町","lat":33.9189,"lon":134.3586,"分類":"四国百名山"},{"山名":"高城山","標高":1630,"所在地":"徳島県那賀町/美馬市","lat":33.8764,"lon":134.3439,"分類":"四国百名山"},{"山名":"石立山","標高":1708,"所在地":"徳島県那賀町/高知県香美市","lat":33.7844,"lon":134.0617,"分類":"四国百名山"},{"山名":"剣山","標高":1955,"所在地":"徳島県三好市/美馬市/那賀町","lat":33.8522,"lon":134.0933,"分類":"四国百名山"},{"山名":"次郎笈","標高":1930,"所在地":"徳島県三好市/那賀町","lat":33.8436,"lon":134.0828,"分類":"四国百名山"},{"山名":"一ノ森","標高":1880,"所在地":"徳島県美馬市/那賀町","lat":33.8544,"lon":134.1103,"分類":"四国百名山"},{"山名":"丸笹山","標高":1712,"所在地":"徳島県三好市/美馬市/つるぎ町","lat":33.8767,"lon":134.1033,"分類":"四国百名山"},{"山名":"塔丸","標高":1713,"所在地":"徳島県三好市/つるぎ町","lat":33.8767,"lon":134.0381,"分類":"四国百名山"},{"山名":"三嶺","標高":1893,"所在地":"徳島県三好市/高知県香美市","lat":33.8394,"lon":133.9858,"分類":"四国百名山"},{"山名":"西熊山","標高":1816,"所在地":"徳島県三好市/高知県香美市","lat":33.8347,"lon":133.9553,"分類":"四国百名山"},{"山名":"天狗塚","標高":1812,"所在地":"徳島県三好市","lat":33.8189,"lon":133.9317,"分類":"四国百名山"},{"山名":"矢筈山","標高":1848,"所在地":"徳島県三好市/つるぎ町","lat":33.9214,"lon":133.9928,"分類":"四国百名山"},{"山名":"黒笠山","標高":1703,"所在地":"徳島県三好市/つるぎ町","lat":33.8886,"lon":133.9842,"分類":"四国百名山"},{"山名":"津志山","標高":1493,"所在地":"徳島県三好市/つるぎ町","lat":33.8569,"lon":133.9481,"分類":"四国百名山"},{"山名":"石堂山","標高":1636,"所在地":"徳島県三好市/つるぎ町","lat":33.9125,"lon":134.0536,"分類":"四国百名山"},{"山名":"寒峰","標高":1605,"所在地":"徳島県三好市","lat":33.8833,"lon":133.8833,"分類":"四国百名山"},{"山名":"烏帽子山","標高":1670,"所在地":"徳島県三好市","lat":33.8547,"lon":133.8817,"分類":"四国百名山"},{"山名":"綱附森","標高":1643,"所在地":"徳島県三好市/高知県香美市","lat":33.7811,"lon":133.9317,"分類":"四国百名山"},{"山名":"権田山","標高":1606,"所在地":"徳島県那賀町","lat":33.7911,"lon":134.2517,"分類":"四国百名山"},
+            # 高知県(23)
+            {"山名":"梶ヶ森","標高":1400,"所在地":"高知県大豊町","lat":33.7533,"lon":133.7536,"分類":"四国百名山"},{"山名":"工石山","標高":1176,"所在地":"高知県高知市","lat":33.6667,"lon":133.5186,"分類":"四国百名山"},{"山名":"御在所山","標高":1079,"所在地":"高知県香美市","lat":33.6811,"lon":133.7786,"分類":"四国百名山"},{"山名":"不入山","標高":1336,"所在地":"高知県津野町","lat":33.4731,"lon":133.0036,"分類":"四国百名山"},{"山名":"鳥形山","標高":1459,"所在地":"高知県仁淀川町/津野町","lat":33.4764,"lon":133.0644,"分類":"四国百名山"},{"山名":"雨ヶ森","標高":1390,"所在地":"高知県仁淀川町","lat":33.6067,"lon":133.2186,"分類":"四国百名山"},{"山名":"稲叢山","標高":1506,"所在地":"高知県本山町/いの町","lat":33.7431,"lon":133.3517,"分類":"四国百名山"},{"山名":"雪光山","標高":1074,"所在地":"高知県高知市/土佐市/いの町","lat":33.6333,"lon":133.4333,"分類":"四国百名山"},{"山名":"白髪山","標高":1469,"所在地":"高知県本山町","lat":33.8053,"lon":133.6464,"分類":"四国百名山"},{"山名":"京柱峠","標高":1133,"所在地":"高知県大豊町/徳島県三好市","lat":33.8344,"lon":133.8656,"分類":"四国百名山"},{"山名":"虚空蔵山","標高":675,"所在地":"高知県須崎市/土佐市/佐川町","lat":33.4353,"lon":133.3144,"分類":"四_百名山"},{"山名":"蟠蛇森","標高":769,"所在地":"高知県須崎市/佐川町","lat":33.4011,"lon":133.2786,"分類":"四国百名山"},{"山名":"松葉川山","標高":1084,"所在地":"高知県四万十町","lat":33.2764,"lon":132.9644,"分類":"四国百名山"},{"山名":"鈴ヶ森","標高":1054,"所在地":"高知県津野町/四万十町","lat":33.1511,"lon":132.8856,"分類":"四国百名山"},{"山名":"陣ヶ森","標高":1013,"所在地":"高知県いの町/土佐町","lat":33.5858,"lon":133.3811,"分類":"四国百名山"},{"山名":"大引割","標高":1100,"所在地":"高知県仁淀川町/津野町","lat":33.4344,"lon":133.0111,"分類":"四国百名山"},{"山名":"天狗高原","標高":1485,"所在地":"高知県津野町","lat":33.4811,"lon":133.0111,"分類":"四国百名山"},{"山名":"黒尊山","標高":1140,"所在地":"高知県四万十市","lat":33.1111,"lon":132.6111,"分類":"四国百名山"},{"山名":"妹背山","標高":404,"所在地":"高知県宿毛市","lat":32.9064,"lon":132.7486,"分類":"四国百名山"},{"山名":"白皇山","標高":433,"所在地":"高知県土佐清水市","lat":32.7533,"lon":132.9536,"分類":"四国百名山"},{"山名":"三里山","標高":400,"所在地":"高知県高知市","lat":33.5133,"lon":133.5844,"分類":"四国百名山"},{"山名":"手結山","標高":200,"所在地":"高知県香南市","lat":33.5411,"lon":133.7586,"分類":"四国百名山"},{"山名":"五台山","標高":146,"所在地":"高知県高知市","lat":33.5458,"lon":133.5653,"分類":"四国百名山"},
+            # 愛媛県(37)
+            {"山名":"石鎚山","標高":1982,"所在地":"愛媛県西条市/久万高原町","lat":33.7711,"lon":133.1154,"分類":"四国百名山"},{"山名":"二ノ森","標高":1929,"所在地":"愛媛県西条市/久万高原町","lat":33.7631,"lon":133.0886,"分類":"四国百名山"},{"山名":"堂ヶ森","標高":1689,"所在地":"愛媛県西条市/久万高原町","lat":33.7381,"lon":133.0536,"分類":"四国百名山"},{"山名":"瓶ヶ森","標高":1897,"所在地":"愛媛県西条市/高知県いの町","lat":33.7939,"lon":133.1953,"分類":"四国百名山"},{"山名":"西黒森","標高":1861,"所在地":"愛媛県西条市/高知県いの町","lat":33.8058,"lon":133.2117,"分類":"四国百名山"},{"山名":"伊予富士","標高":1756,"所在地":"愛媛県西条市/高知県いの町","lat":33.7917,"lon":133.2433,"分類":"四国百名山"},{"山名":"東黒森","標高":1735,"所在地":"愛媛県西条市/高知県いの町","lat":33.8011,"lon":133.2556,"分類":"四国百名山"},{"山名":"笹ヶ峰","標高":1859,"所在地":"愛媛県西条市/新居浜市/高知県いの町","lat":33.8208,"lon":133.2711,"分類":"四国百名山"},{"山名":"ちち山","標高":1855,"所在地":"愛媛県新居浜市/高知県いの町","lat":33.8258,"lon":133.2847,"分類":"四国百名山"},{"山名":"赤星山","標高":1453,"所在地":"愛媛県四国中央市","lat":33.9186,"lon":133.2844,"分類":"四国百名山"},{"山名":"東赤石山","標高":1706,"所在地":"愛媛県新居浜市/四国中央市","lat":33.8764,"lon":133.3744,"分類":"四国百名山"},{"am": "西赤石山", "標高": 1626, "所在地": "愛媛県新居浜市", "lat": 33.8711, "lon": 133.3283, "分類": "四国百名山"},{"山名":"二ッ岳","標高":1647,"所在地":"愛媛県四国中央市","lat":33.915,"lon":133.435,"分類":"四国百名山"},{"山名":"平家平","標高":1693,"所在地":"愛媛県新居浜市/高知県大川村","lat":33.8164,"lon":133.3444,"分類":"四国百名山"},{"山名":"翠波峰","標高":892,"所在地":"愛媛県四国中央市","lat":33.9511,"lon":133.5256,"分類":"四国百名山"},{"山名":"高縄山","標高":986,"所在地":"愛媛県松山市","lat":33.9481,"lon":132.8344,"分類":"四国百名山"},{"山名":"皿ヶ嶺","標高":1271,"所在地":"愛媛県東温市/久万高原町","lat":33.7225,"lon":132.9056,"分類":"四国百名山"},{"山名":"引地山","標高":1027,"所在地":"愛媛県松山市/砥部町","lat":33.7011,"lon":132.8536,"分類":"四国百名山"},{"山名":"三本杭","標高":1229,"所在地":"愛媛県宇和島市","lat":33.2133,"lon":132.6167,"分類":"四国百名山"},{"山名":"鬼ヶ城山","標高":1151,"所在地":"愛媛県宇和島市","lat":33.2189,"lon":132.5936,"分類":"四国百名山"},{"山名":"篠山","標高":1065,"所在地":"愛媛県愛南町/高知県宿毛市","lat":32.9644,"lon":132.6594,"分類":"四国百名山"},{"山名":"笠置山","標高":412,"所在地":"愛媛県西予市","lat":33.3858,"lon":132.4211,"分類":"四国百名山"},{"山名":"出石山","標高":812,"所在地":"愛媛県大洲市/八幡浜市","lat":33.5411,"lon":132.4586,"分類":"四国百名山"},{"山名":"中津明神山","標高":1541,"所在地":"愛媛県久万高原町/高知県仁淀川町","lat":33.6211,"lon":133.0536,"分類":"四国百名山"},{"山名":"大川嶺","標高":1520,"所在地":"愛媛県久万高原町/内子町","lat":33.5936,"lon":132.9344,"分類":"四国百名山"},{"山名":"小田深山","標高":1100,"所在地":"愛媛県内子町","lat":33.5358,"lon":132.8811,"分類":"四国百名山"},{"山名":"五段高原","標高":1456,"所在地":"愛媛県久万高原町/高知県檮原町","lat":33.4811,"lon":132.9811,"分類":"四国百名山"},{"山名":"高茂岬","標高":100,"所在地":"愛媛県愛南町","lat":32.9064,"lon":132.4586,"分類":"四国百名山"},{"山名":"横峰寺","標高":750,"所在地":"愛媛県西条市","lat":33.8344,"lon":133.1211,"分類":"四国百名山"},{"山名":"今治城","標高":10,"所在地":"愛媛県今治市","lat":34.0653,"lon":133.0044,"分類":"四国百名山"},{"山名":"大三島","標高":437,"所在地":"愛媛県今治市","lat":34.2358,"lon":133.0111,"分類":"四国百名山"},{"山名":"伯方島","標高":300,"所在地":"愛媛県今治市","lat":34.2058,"lon":133.0844,"分類":"四国百名山"},{"山名":"大島","標高":381,"所在地":"愛媛県今治市","lat":34.1558,"lon":133.0544,"分類":"四国百名山"},{"山名":"佐田岬","標高":100,"所在地":"愛媛県伊方町","lat":33.3458,"lon":132.0111,"分類":"四国百名山"},{"山名":"宇和島城","標高":80,"所在地":"愛媛県宇和島市","lat":33.2211,"lon":132.5644,"分類":"四国百名山"},{"山名":"興居島","標高":282,"所在地":"愛媛県松山市","lat":33.8858,"lon":132.6844,"分類":"四国百名山"},{"山名":"鹿島","標高":114,"所在地":"愛媛県松山市","lat":33.9758,"lon":132.7744,"分類":"四国百名山"}
+        ]
+        df = pd.DataFrame(base_data)
+        df["登頂済み"] = False
+        df["登頂日"] = None
+        df.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
 
-# --- 2. 関数定義 ---
-@st.cache_data(ttl=3600)
-def get_nearby_mountains(lat, lon, radius_km):
-    overpass_url = "https://overpass-api.de/api/interpreter"
-    dist = radius_km * 1000
-    query = f"""[out:json][timeout:30];node["natural"="peak"](around:{dist},{lat},{lon});out body;"""
-    try:
-        res = requests.get(overpass_url, params={'data': query}, timeout=15)
-        return res.json().get('elements', [])
-    except: return []
+# --- 実行 ---
+initialize_csv()
+df_master = pd.read_csv(CSV_FILE)
+df_master["登頂日"] = pd.to_datetime(df_master["登頂日"]).dt.date
 
-def search_location(query, pref):
-    url = "https://nominatim.openstreetmap.org/search"
-    full_query = f"{pref} {query}" if pref != "指定なし" else query
-    params = {"q": full_query, "format": "json", "limit": 1, "countrycodes": "jp"}
-    headers = {"User-Agent": "MyMountainApp/Prototype"}
-    try:
-        res = requests.get(url, params=params, headers=headers, timeout=5)
-        data = res.json()
-        if data: return float(data[0]["lat"]), float(data[0]["lon"]), data[0]["display_name"]
-    except: return None
-    return None
-
-def is_major_mountain(tags):
-    """百名山・新日本百名山かどうかを判定"""
-    text = str(tags).lower()
-    return any(k in text for k in ["日本百名山", "100 famous japanese mountains", "新日本百名山"])
-
-# --- 3. セッション管理 ---
-if 'clicked_lat' not in st.session_state: st.session_state.clicked_lat = 35.3606 
-if 'clicked_lon' not in st.session_state: st.session_state.clicked_lon = 138.7274
-
-lat_in = st.session_state.clicked_lat
-lon_in = st.session_state.clicked_lon
-
-# --- 4. サイドバー ---
+# --- サイドバー：新規登録 ---
 with st.sidebar:
-    st.header("🔍 一般山岳検索")
-    selected_pref = st.selectbox("都道府県で絞り込む", PREFECTURES, key="low_pref")
-    search_query = st.text_input("山の名前", key="low_search")
-    
-    if st.button("検索してジャンプ", key="low_btn"):
-        result = search_location(search_query, selected_pref)
-        if result:
-            st.session_state.clicked_lat, st.session_state.clicked_lon = result[0], result[1]
-            st.rerun()
+    st.title("🌿 四国登山ログ")
+    with st.form("new_mountain_form", clear_on_submit=True):
+        st.subheader("⛰️ 山の新規登録")
+        n_name = st.text_input("山名")
+        n_ele = st.number_input("標高(m)", value=0)
+        n_loc = st.text_input("所在地")
+        n_lat = st.number_input("緯度(lat)", format="%.6f", value=33.8)
+        n_lon = st.number_input("経度(lon)", format="%.6f", value=133.5)
+        n_cat = st.selectbox("分類", ["四国百名山", "里山・その他"])
+        if st.form_submit_button("追加"):
+            if n_name:
+                new_data = {"山名": n_name, "標高": n_ele, "所在地": n_loc, "lat": n_lat, "lon": n_lon, "分類": n_cat, "登頂済み": False, "登頂日": None}
+                df_master = pd.concat([df_master, pd.DataFrame([new_data])], ignore_index=True)
+                df_master.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
+                st.rerun()
 
-    st.markdown("---")
-    map_style = st.radio("地図スタイル", ["標準地図", "淡色地図", "シームレス空中写真"], key="low_map_style")
-    # ★keyを追加してエラーを回避
-    r_mountain = st.slider("探索半径 (km)", 5, 50, 15, key="low_mt_slider")
-    
-    st.markdown("---")
-    st.page_link("20260102_App.py", label="名山探索（メイン）へ戻る", icon="🏔️")
+# --- メイン画面 ---
+st.title("🏔️ 四国 登山＆里山ログ（試作版）")
 
-# --- 5. メイン描画 ---
-peaks = get_nearby_mountains(lat_in, lon_in, r_mountain)
-col1, col2 = st.columns([3, 1])
+col1, col2 = st.columns([2, 1])
 
 with col1:
-    map_tiles = {
-        "標準地図": "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
-        "淡色地図": "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
-        "シームレス空中写真": "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg"
-    }
-    m = folium.Map(location=[lat_in, lon_in], zoom_start=11, tiles=map_tiles[map_style], attr="国土地理院")
-    folium.Marker([lat_in, lon_in], icon=folium.Icon(color="black", icon="crosshairs", prefix="fa")).add_to(m)
+    m = folium.Map(location=[33.8, 133.8], zoom_start=8)
+    folium.TileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', attr='国土地理院', name='淡色地図').add_to(m)
     
-    plot_count = 0
-    for p in peaks:
-        tags = p.get('tags', {})
-        # 名山（百名山・新日本）でなければプロット
-        if not is_major_mountain(tags):
-            name = tags.get('name', '無名峰')
-            ele = tags.get('ele', '不明')
-            
-            popup_content = f"""
-            <div style="width: 140px; font-family: sans-serif; line-height: 1.1;">
-                <p style="margin: 0; font-size: 10px; color: green;">🌿 一般山岳</p>
-                <p style="margin: 0; font-size: 14px; font-weight: bold;">{name}</p>
-                <div style="margin: 1px 0; border-top: 1px dashed #ddd;"></div>
-                <p style="margin: 0; font-size: 12px;">標高: <b>{ele} m</b></p>
-            </div>
-            """
-            folium.Marker(
-                [p['lat'], p['lon']], 
-                popup=folium.Popup(popup_content, max_width=200),
-                icon=folium.Icon(color="green", icon="leaf", prefix="fa")
-            ).add_to(m)
-            plot_count += 1
+    icon_js = """
+        function(cluster) {
+            var count = cluster.getChildCount();
+            return new L.DivIcon({ 
+                html: '<div style="background-color: rgba(0, 70, 0, 0.85); border: 2px solid #fff; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold;">' + count + '</span></div>', 
+                className: 'marker-cluster', iconSize: new L.Point(40, 40) 
+            });
+        }
+    """
+    cluster = MarkerCluster(icon_create_function=icon_js).add_to(m)
+
+    for idx, row in df_master.iterrows():
+        is_done = row["登頂済み"]
+        color = "orange" if is_done else ("blue" if row["分類"]=="里山・その他" else "green")
+        status_label = "✨ 登頂済み" if is_done else "🌿 未踏の地"
+        date_str = f"{row['登頂日']}" if pd.notnull(row['登頂日']) else "---"
+        
+        # 美しいPopupデザイン
+        popup_html = f"""
+        <div style="width: 180px; font-family: sans-serif; color: #333;">
+            <div style="font-size: 10px; font-weight: bold; color: {color}; margin-bottom: 2px;">{status_label}</div>
+            <div style="font-size: 16px; font-weight: bold; border-bottom: 2px solid {color}; padding-bottom: 3px; margin-bottom: 8px;">{row['山名']}</div>
+            <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                <tr><td style="color: #666; width: 45px;">標高</td><td style="font-weight: bold;">{row['標高']} m</td></tr>
+                <tr><td style="color: #666;">分類</td><td>{row['分類']}</td></tr>
+                <tr><td style="color: #666;">登頂日</td><td style="font-size: 11px;">{date_str}</td></tr>
+            </table>
+            <div style="font-size: 10px; color: #888; margin-top: 8px; font-style: italic;">{row['所在地']}</div>
+        </div>
+        """
+        
+        folium.Marker(
+            [row["lat"], row["lon"]],
+            popup=folium.Popup(popup_html, max_width=300),
+            icon=folium.Icon(color=color, icon="trophy" if is_done else "leaf", prefix="fa")
+        ).add_to(cluster)
     
-    map_data = st_folium(m, width=None, height=700, use_container_width=True)
+    st_folium(m, width=None, height=600, use_container_width=True)
 
 with col2:
-    st.subheader("🌿 周辺の山一覧")
-    st.write(f"半径 {r_mountain}km 内の一般山岳: {plot_count}件")
-    # 標高順に上位20件を表示
-    sorted_peaks = sorted(
-        [p for p in peaks if not is_major_mountain(p.get('tags', {}))],
-        key=lambda x: float(re.findall(r"\d+", x['tags'].get('ele', '0'))[0]) if re.findall(r"\d+", x['tags'].get('ele', '0')) else 0,
-        reverse=True
-    )
-    for p in sorted_peaks[:20]:
-        st.write(f"- {p['tags'].get('name','無名')} ({p['tags'].get('ele','?')}m)")
+    st.subheader("📊 達成状況")
+    done_count = df_master["登頂済み"].sum()
+    st.metric("総踏破数", f"{done_count} / {len(df_master)} 座", f"{done_count/len(df_master):.1%}")
 
-# クリック連動 (0.01度以上の移動)
-if map_data and map_data["last_clicked"]:
-    nl, ng = map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"]
-    if abs(nl - st.session_state.clicked_lat) + abs(ng - st.session_state.clicked_lon) > 0.01:
-        st.session_state.clicked_lat, st.session_state.clicked_lon = nl, ng
+    st.subheader("📋 登山リスト")
+    edited_df = st.data_editor(
+        df_master[["登頂済み", "登頂日", "山名", "標高", "分類"]],
+        column_config={
+            "登頂済み": st.column_config.CheckboxColumn("登頂"),
+            "登頂日": st.column_config.DateColumn("日"),
+        },
+        use_container_width=True, height=500, hide_index=True,
+        disabled=["山名", "標高", "分類"], key="shikoku_perfect_v5"
+    )
+
+    if st.button("✅ 変更を保存"):
+        for _, row in edited_df.iterrows():
+            is_checked = row["登頂済み"]
+            if pd.notnull(row["登頂日"]): is_checked = True
+            df_master.loc[df_master["山名"] == row["山名"], "登頂済み"] = is_checked
+            df_master.loc[df_master["山名"] == row["山名"], "登頂日"] = row["登頂日"]
+        df_master.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
+        st.success("保存完了！")
         st.rerun()
