@@ -19,10 +19,6 @@ CSV_FILE = "mountains300.csv"
 def load_mountain_data():
     df = None
     
-    # --- デバッグ情報：現在の作業ディレクトリを表示 ---
-    st.sidebar.write(f"実行場所: `{os.getcwd()}`")
-    st.sidebar.write(f"探しているファイル: `{os.path.abspath(CSV_FILE)}`")
-
     # A. ローカルのCSVファイルを最優先で確認
     if os.path.exists(CSV_FILE):
         try:
@@ -69,6 +65,10 @@ def load_mountain_data():
     
     return df
 
+# --- データの初期化 ---
+if "df_master" not in st.session_state:
+    st.session_state.df_master = load_mountain_data()
+
 df_300 = load_mountain_data()
 
 # --- 2. 地方区分データの定義 ---
@@ -90,7 +90,7 @@ with st.sidebar:
     map_style = st.radio("地図スタイル", ["標準地図", "淡色地図", "シームレス空中写真"])
     
     st.markdown("---")
-    done_count = df_300["登頂済み"].sum()
+    done_count = st.session_state.df_master["登頂済み"].sum()
     total_mountains = len(df_300)
     st.metric("合計登頂数", f"{done_count} / {total_mountains}", f"{done_count/total_mountains:.1%}")
     
@@ -136,38 +136,65 @@ marker_cluster = MarkerCluster(icon_create_function=icon_js).add_to(m)
 for idx, row in display_df.iterrows():
     is_done = row["登頂済み"]
     
-    # --- ここで色とアイコンを決める ---
-    if is_done:
-        color = "orange" 
-        icon_img = "star"
-        prefix = "fa"
-    else:
-        color = "red" if row["種類"]=="百名山" else "blue" if row["種類"]=="二百名山" else "green"
-        icon_img = "mountain"
-        prefix = "fa"
-    
-    # --- 重要：ここで date_info を定義する ---
+    # --- 1. まず popup_html を定義する (これが先！) ---
     date_info = f"<br>登頂日: {row['登頂日']}" if row['登頂日'] else ""
-    
-    # ポップアップの内容
     done_label = " 🏆 【登頂達成！】" if is_done else ""
+    
     popup_html = f"""
     <div style="width: 180px; font-family: sans-serif; line-height: 1.5;">
-        <p style="margin: 0; font-size: 11px; color: {color}; font-weight: bold;">【{row['種類']}】{done_label}</p>
+        <p style="margin: 0; font-size: 11px; color: {'orange' if is_done else 'blue'}; font-weight: bold;">【{row['種類']}】{done_label}</p>
         <p style="margin: 0; font-size: 16px; font-weight: bold; color: #333;">{row['山名']}</p>
         <div style="margin: 5px 0; border-top: 1px solid #eee;"></div>
         <p style="margin: 0; font-size: 12px; color: #666;">標高: <span style="font-size: 14px; font-weight: bold; color: #000;">{row['標高']} m</span></p>
         <p style="margin: 0; font-size: 11px; color: #999;">所在地: {row['所在地']}{date_info}</p>
     </div>
     """
-    
-    # --- 最後にマーカーを追加（インデントに注意！） ---
+
+    # --- 2. 次にマーカーのアイコンを決める ---
+    if is_done:
+        # 豪華なゴールドマーカー (サイズを30px → 50pxに大型化)
+        icon_html = """
+        <div style="position: relative; width: 50px; height: 50px;">
+            <div style="
+                position: absolute; width: 100%; height: 100%;
+                background: radial-gradient(circle, rgba(255,215,0,0.9) 0%, rgba(255,165,0,0.4) 50%, rgba(255,215,0,0) 80%);
+                border-radius: 50%;
+                animation: flare 2s infinite alternate;
+                filter: blur(2px);">
+            </div>
+            <div style="
+                position: absolute; width: 100%; height: 100%;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 35px; /* アイコンを大きく */
+                filter: drop-shadow(0 0 10px rgba(255, 69, 0, 0.8));">
+                👑
+            </div>
+        </div>
+        <style>
+        @keyframes flare {
+            0% { transform: scale(0.7); opacity: 0.4; }
+            100% { transform: scale(1.4); opacity: 0.8; }
+        }
+        </style>
+        """
+        # icon_size と icon_anchor を大きくしたサイズに合わせて調整
+        icon = folium.DivIcon(
+            html=icon_html, 
+            icon_size=(50, 50), 
+            icon_anchor=(25, 25) # 中心を合わせるためにサイズ(50)の半分に設定
+        )
+    else:
+        # 通常の山マーカー
+        color = "red" if row["種類"]=="百名山" else "blue" if row["種類"]=="二百名山" else "green"
+        icon = folium.Icon(color=color, icon="mountain", prefix="fa")
+
+    # --- 3. 最後にマーカーを地図に追加する (ここで popup_html を使う) ---
     folium.Marker(
         [row["lat"], row["lon"]],
-        popup=folium.Popup(popup_html, max_width=250),
-        icon=folium.Icon(color=color, icon=icon_img, prefix=prefix)
+        popup=folium.Popup(popup_html, max_width=250), # ここでエラーが出ていた
+        icon=icon
     ).add_to(marker_cluster)
-
+    
 # 地図表示・クリックオブジェクト取得
 map_data = st_folium(m, width=None, height=550, use_container_width=True, key="mt_hybrid_map")
 
@@ -182,71 +209,70 @@ if map_data and map_data.get("last_object_clicked"):
         clicked_mt_name = nearest["山名"]
         st.info(f"📍 **{clicked_mt_name}** を選択中（下のリストの先頭に表示しています）")
 
-# --- 7. リスト表示と保存（連動ソート対応） ---
+# --- 7. リスト表示と自動保存ロジック ---
 st.markdown("---")
-st.subheader("📋 登頂記録の編集")
+st.subheader("📋 登頂記録（チェックを入れると即座に保存されます）")
 
-# 種類順の重み付け
+# 以前の状態を保持
+df_current = st.session_state.df_master.copy()
+
+# 種類順の重み付け（百 > 二百 > 三百）
 rank_order = {"百名山": 1, "二百名山": 2, "三百名山": 3}
-display_sorted = display_df.copy()
+display_sorted = display_df.copy() # ここで display_sorted を作成！
 display_sorted["rank_weight"] = display_sorted["種類"].map(rank_order).fillna(4)
 
-# クリックされた山を最優先(0)にする
+# 地図でクリックされた山があれば、それをリストの最優先（一番上）にする
 if clicked_mt_name:
     display_sorted.loc[display_sorted["山名"] == clicked_mt_name, "rank_weight"] = 0
 
+# 重みと山名でソート
 display_sorted = display_sorted.sort_values(by=["rank_weight", "山名"])
 
+# データエディタを表示
 edited_df = st.data_editor(
     display_sorted[["登頂済み", "登頂日", "種類", "山名", "標高", "所在地"]],
     use_container_width=True, height=500, hide_index=True,
     disabled=["種類", "山名", "標高", "所在地"], key="mt_editor"
 )
 
-if st.button("✅ 変更を確定して保存する", type="primary"):
-    # 1. 保存するデータを準備（newly_completedの判定など）
-    newly_completed = []
-    for _, r in edited_df.iterrows():
-        original_val = df_300.loc[df_300["山名"] == r["山名"], "登頂済み"].values[0]
-        if r["登頂済み"] and not original_val:
-            newly_completed.append(r["山名"])
-        df_300.loc[df_300["山名"] == r["山名"], ["登頂済み", "登頂日"]] = [r["登頂済み"], r["登頂日"]]
+# --- 変更検知ロジック ---
+# エディタで変更があった場合、edited_df の中身が更新される
+for idx, row in edited_df.iterrows():
+    mt_name = row["山名"]
+    new_status = row["登頂済み"]
+    
+    # 元のデータ(df_master)の状態を取得
+    old_status = st.session_state.df_master.loc[st.session_state.df_master["山名"] == mt_name, "登頂済み"].values[0]
 
-    # 2. 実際の保存処理（ここではまだ rerun しない！）
-    save_success = False
-    if os.path.exists(CSV_FILE):
-        try:
-            df_300.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
-            save_success = True
-        except Exception as e:
-            st.error(f"CSV保存エラー: {e}")
-    else:
-        try:
-            conn = st.connection("gsheets", type=GSheetsConnection)
-            conn.update(data=df_300)
-            save_success = True
-        except Exception as e:
-            st.error(f"クラウド保存エラー: {e}")
-
-    # 3. 保存に成功した後の演出
-    if save_success:
-        if newly_completed:
-            # 🎊 新しい登頂がある場合のお祝い
-            st.balloons()
-            st.snow()
-            st.toast(f"おめでとうございます！ {'・'.join(newly_completed)} を制覇！")
-            st.success(f"🎊 新たに {len(newly_completed)} 座の記録が刻まれました！")
+    # 【重要】今回新しくチェックがついた場合
+    if new_status == True and old_status == False:
+        # 1. マスターデータを更新
+        st.session_state.df_master.loc[st.session_state.df_master["山名"] == mt_name, ["登頂済み", "登頂日"]] = [True, row["登頂日"]]
+        
+        # 2. 保存処理を実行
+        if os.path.exists(CSV_FILE):
+            st.session_state.df_master.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
         else:
-            st.toast("💾 記録を更新しました")
-            st.success("保存が完了しました！")
+            conn = st.connection("gsheets", type=GSheetsConnection)
+            conn.update(data=st.session_state.df_master)
 
-        # 4. 最後に少しだけ待つか、ユーザーが確認できるようにしてからリロード
-        # 注意：st.rerun()を即座に呼ぶと上のsuccessメッセージが見えないので、
-        # 演出（バルーン）を出し切るために少しだけ時間を置くのがコツです。
+        # 3. お祝い演出！
+        st.balloons()
+        st.snow()
+        st.toast(f"🏆 {mt_name} 登頂おめでとうございます！", icon="⛰️")
+        
+        # 4. 画面を再描画して地図に反映（少し待ってから）
         import time
-        time.sleep(2) # 2秒間メッセージを見せる
+        time.sleep(2)
         st.rerun()
 
+    # チェックが外された場合の保存処理（演出なし）
+    elif new_status == False and old_status == True:
+        st.session_state.df_master.loc[st.session_state.df_master["山名"] == mt_name, ["登頂済み", "登頂日"]] = [False, ""]
+        if os.path.exists(CSV_FILE):
+            st.session_state.df_master.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
+        st.rerun()
+        
 # --- 8. 免責事項・ライセンス・出典 ---
 st.markdown("---")
 with st.expander("ℹ️ アプリ情報・出典・ライセンス"):
